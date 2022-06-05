@@ -5,14 +5,30 @@
 #include <Wire.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WebServer.h>
+#include "DHT.h"
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
 
+LiquidCrystal_I2C lcd(0x27,16,2);
+#define DHTPIN 14     // what digital pin we're connected to
+#define DHTTYPE DHT11 // DHT 11
+byte degree[8] = {
+  0B01110,
+  0B01010,
+  0B01110,
+  0B00000,
+  0B00000,
+  0B00000,
+  0B00000,
+  0B00000
+};
 #define FIREBASE_HOST "smartdoor-3769e-default-rtdb.firebaseio.com"
 #define FIREBASE_AUTH "9dNc24Ut1y81UxKgQAio19SjVhgaC3rBqQog39vK"
+
 #define WIFI_SSID "Quan"   //tên wifi
 #define WIFI_PASSWORD "quanprovip" //password wifi
-
-String Led_Button= "";
-String LedAuto = "";
+DHT dht(DHTPIN, DHTTYPE);
+String Led_Button = "";
 BH1750 lightMeter(0x23);
 int led = D3;
 void setup(){
@@ -33,21 +49,27 @@ void setup(){
    Serial.print("IP Address is : ");
    Serial.println(WiFi.localIP()); //In ra địa chỉ IP
    Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH); // Kết nối tới firebase
+   dht.begin();
    Wire.begin();
    if (lightMeter.begin()) {
     Serial.println(F("BH1750 initialised"));
-    }
+   }
    else {
     Serial.println(F("Error initialising BH1750"));
-    }
-
+   }
     Serial.println(F("BH1750 Test begin"));
-
+   lcd.init();  
+   lcd.backlight();
+   lcd.print("Nhiet do: ");
+   lcd.setCursor(0,1);
+   lcd.print("Do am: ");
+   lcd.createChar(1, degree);
 }
 
 void loop() 
 {
-  uint16_t lux = lightMeter.readLightLevel();
+  uint16_t lux = lightMeter.readLightLevel();     //unsigned short
+  Firebase.setInt("lux",lux);
   Serial.print("Light: ");
   Serial.print(lux);
   Serial.println(" lx");
@@ -55,27 +77,39 @@ void loop()
   
   Led_Button = Firebase.getString("Led_Button");
   if (Led_Button == "ON") { // Kiểm tra nếu trạng thái đèn là ON
+     Firebase.setString("Led_Status","ON");
      Serial.println("Led Turned ON");
      digitalWrite(LED_BUILTIN, LOW); // make bultin led ON
      digitalWrite(led, HIGH); // make external led ON
-   } else if (Led_Button == "OFF") { // Kiểm tra nếu trạng thái đèn là OFF
-     Serial.println("Led Turned OFF");
-     digitalWrite(LED_BUILTIN, HIGH); // make bultin led OFF
-     digitalWrite(led, LOW); // make external led OFF
-   } else {
-     Serial.println("Wrong Credential! Please send ON/OFF");
-   }
-  LedAuto = Firebase.getString("Led_Auto");
-  if (LedAuto == "ON") { // Kiểm tra nếu trạng thái đèn là ON
-   if(lux>2){
-     Serial.println("Led Turned OFF");
-     digitalWrite(LED_BUILTIN, HIGH); // make bultin led OFF
-     digitalWrite(led, LOW); // make external led OFF
-   }
-   else{
-    Serial.println("Led Turned ON");
-     digitalWrite(LED_BUILTIN, LOW); // make bultin led ON
-     digitalWrite(led, HIGH); // make external led ON
-   }
-    }
+   } 
+  else if (Led_Button == "OFF") { // Kiểm tra nếu trạng thái đèn là OFF
+     if(lux>2){
+         Firebase.setString("Led_Status","OFF");
+         Serial.println("Led Turned OFF");
+         digitalWrite(LED_BUILTIN, HIGH); // make bultin led OFF
+         digitalWrite(led, LOW); // make external led OFF
+          }
+     else{
+         Firebase.setString("Led_Status","ON");
+         Serial.println("Led Turned ON");
+         digitalWrite(LED_BUILTIN, LOW); // make bultin led ON
+         digitalWrite(led, HIGH); // make external led ON
+      }
+     }
+  float h = dht.readHumidity();
+  Firebase.setInt("Do_Am",h);
+  float t = dht.readTemperature();
+  Firebase.setInt("Nhiet_Do",t);
+  if (isnan(t) || isnan(h)){
+  } 
+  else {
+    lcd.setCursor(10,0);
+    lcd.print(round(t));
+    lcd.print(" ");
+    lcd.write(1);
+    lcd.print("C");
+    lcd.setCursor(10,1);
+    lcd.print(round(h));
+    lcd.print(" %");    
+}
 }
